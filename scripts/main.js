@@ -256,12 +256,21 @@ function initializeVisualization(nodeData, geoData) {
 
   const nodeSelection = svg
     .append("g")
+    .attr("id", "nodes-group")
     .selectAll("circle")
     .data(nodeData)
     .join("circle")
+    .attr("opacity", 1)
     .attr("r", SETTINGS.node.radius)
     .attr("stroke", SETTINGS.node.stroke)
     .attr("stroke-width", SETTINGS.node.strokeWidth);
+
+  const customSVG = {
+    d: "M62.79,29.172l-28-28C34.009,0.391,32.985,0,31.962,0s-2.047,0.391-2.828,1.172l-28,28  c-1.562,1.566-1.484,4.016,0.078,5.578c1.566,1.57,3.855,1.801,5.422,0.234L8,33.617V60c0,2.211,1.789,4,4,4h16V48h8v16h16  c2.211,0,4-1.789,4-4V33.695l1.195,1.195c1.562,1.562,3.949,1.422,5.516-0.141C64.274,33.188,64.356,30.734,62.79,29.172z"
+  }
+  svg.select("g#nodes-group").append("symbol").attr("id", "house")
+    .attr("viewBox", "0 0 64 64")
+    .append("path").attr("d", customSVG.d)
 
   const labelSelection = svg.append("g").selectAll(".group-label");
 
@@ -754,6 +763,71 @@ function transitionToAgeGenderPyramid(processedData) {
   updateLabels([...ageLabelsData, ...genderLabelsData]);
 }
 
+function transitionToHomes(processedData) {
+  const { simulation, nodeSelection, width, height } = sharedD3;
+  const nodesGroup = d3.select("#nodes-group");
+
+  const houseSize = 20;
+
+  simulation.stop();
+
+  const nodeSpacing = houseSize * 1.25;
+
+  const baseHeight = 10 * nodeSpacing;
+  let startY = height / 2 - baseHeight / 2;
+  let startX = width / 2 - baseHeight / 2;
+
+  const labels = ["Com água encanada", "Sem água encanada"];
+  const percentages = [97.59, 2.41]
+
+  const nodes = processedData.nodes;
+  let index = 0;
+  for (let i = 0; i < 10; i++) {
+    for (let j = 0; j < 10; j++) {
+      nodes[index].x = startX + j * nodeSpacing;
+      nodes[index].y = startY + i * nodeSpacing;
+      nodes[index].waterGroup = index > 97 ? 0 : 1;
+      index++;
+    }
+  }
+
+  const removedNodes = nodeSelection.transition().duration(250).attr("opacity", 0).remove();
+
+  const houses = nodesGroup.selectAll("use").data(processedData.nodes)
+    .join("use")
+    .attr("href", "#house")
+    .attr("width", houseSize)
+    .attr("height", houseSize)
+    .attr("x", d => d.x)
+    .attr("y", d => d.y)
+    .attr("opacity", 0)
+    .attr("fill", d => d.waterGroup ? "#3279a8" : "#fa4b4b")
+
+  houses.transition()
+    .delay(250)
+    .duration(250)
+    .attr("opacity", 1)
+
+  const labelData = labels.map((text, i) => ({
+    text,
+    percentage: percentages[i],
+    x: width * 0.15,
+    y: height * 0.15 + (i * 22), // A distância vertical foi reduzida de 30 para 22.
+    color: i ? "#fa4b4b" : "#3279a8"
+  }));
+
+  updateLabels(labelData);
+
+  onExitHandlers.push(() => {
+    houses.transition().duration(250).attr("opacity", 0).remove();
+    for (const element of removedNodes) {
+      nodesGroup.append(() => element);
+    }
+    nodeSelection
+      .attr("opacity", 1);
+  })
+}
+
 function setupObserver(processedData) {
   const observer = new IntersectionObserver(
     (entries) => {
@@ -784,6 +858,8 @@ function setupObserver(processedData) {
               );
             case "step-gender":
               return transitionToGender(processedData);
+            case "step-home":
+              return transitionToHomes(processedData);
             case "step-flag": // Etapa da bandeira adicionada
               return transitionToFlag(processedData.nodes);
           }
